@@ -18,6 +18,16 @@
 #define F_WRITING    2
 #define F_DONE       3
 
+#define HEAD "<html>\r\n<head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=big5\" />\r\n<title>Network Programming Homework 3</title>\r\n</head>\r\n"
+#define BODY "<body bgcolor=#336699>\r\n"
+#define FONT "<font face=\"Courier New\" size=2 color=#FFFF99>\r\n"
+#define TABLE1 "<table width=\"800\" border=\"1\">\r\n<tr>\r\n"
+#define TABLE_ELEMENT "<td>%s</td>\r\n"
+#define TABLE2 "</tr>\r\n<tr>\r\n<td valign=\"top\" id=\"m0\"></td><td valign=\"top\" id=\"m1\"></td><td valign=\"top\" id=\"m2\"></td>\r\n<td valign=\"top\" id=\"m3\"></td><td valign=\"top\" id=\"m4\"></td>\r\n</tr>\r\n</table>\r\n"
+#define SCRIPT_MESSAGE "<script>document.all[\'m0\'].innerHTML += \"%s<br>\";</script>\r\n"
+#define SCRIPT_COMMAND "<script>document.all[\'m0\'].innerHTML += \"% <b>%s</b><br>\";</script>\r\n"
+#define TAIL "</font>\r\n</body>\r\n</html>\r\n"
+
 void parseString(char* string, int* nbHost);
 int readline(int fd,char *ptr,int maxlen);
 void printMsg(char* string);
@@ -25,71 +35,48 @@ char* hosts[5];
 char* ports[5];
 char* files[5];
 
-const char* head = "<html>"
-                   "<head>"
-                   "<meta http-equiv=\"Content-Type\" content=\"text/html; charset=big5\" />"
-                   "<title>Network Programming Homework 3</title>"
-                   "</head>";
-const char* body = "<body bgcolor=#336699>";
-const char* font = "<font face=\"Courier New\" size=2 color=#FFFF99>";
-const char* table1 = "<table width=\"800\" border=\"1\">"
-                     "<tr>";
-const char* table_element = "<td>%s</td>";
-const char* table2 = "</tr>"
-                     "<tr>"
-                     "<td valign=\"top\" id=\"m0\"></td><td valign=\"top\" id=\"m1\"></td><td valign=\"top\" id=\"m2\"></td>"
-                     "<td valign=\"top\" id=\"m3\"></td><td valign=\"top\" id=\"m4\"></td>"
-                     "</tr>"
-                     "</table>";
-const char* script = "<script>document.all[\'m0\'].innerHTML += \"%s\";</script>";
-const char* tail = "</font>"
-                   "</body>"
-                   "</html>";
-const char* br = "<br>";
-
 int main(int argc,char *argv[])
 {
-    printf(head);
-    printf(body);
-    printf(font);
-    printf(table1);
-
-	char* queryString = getenv("QUERY_STRING");
-    /* printf("queryString = %s<br>\n", queryString); */
-
-    int nbHost;
+    int nbHost = 0;
+    char* queryString = getenv("QUERY_STRING");
     parseString(queryString, &nbHost);
-    /* printf("nbHost = %d<br>\n", nbHost); */
+    nbHost = 1;
+    /* hosts[0] = "140.113.168.191"; */
+    /* ports[0] = "5577"; */
 
-    for (int i = 0; i < nbHost; i++) {
-        printf(table_element, hosts[i]);
-    }
-
-    printf(table2);
-    printf(tail);
+    printf(HEAD);
+    printf(BODY);
+    printf(FONT);
+    printf(TABLE1);
     fflush(stdout);
 
-    /* FILE* filefd = fopen(files[0], "r"); */
-    /* printf("files[0] = %s\n", files[0]); */
-    /* fflush(stdout); */
+    for (int i = 0; i < nbHost; i++) {
+        printf(TABLE_ELEMENT, hosts[i]);
+        fflush(stdout);
+    }
+
+    printf(TABLE2);
+    printf(TAIL);
+    fflush(stdout);
+
+    FILE* filefp = fopen("t1.txt", "r");
 
     int n;
     int host_fd[5] = {0};
-    /* struct sockaddr_in host_sin[5]; */
-    struct sockaddr_in host_sin, cli_sin;
+    struct sockaddr_in host_sin[5];
+    /* struct sockaddr_in host_sin, cli_sin; */
     memset(&host_sin, 0, sizeof(host_sin));
     for (int i = 0; i < nbHost; i++) {
         host_fd[i] = socket(AF_INET, SOCK_STREAM, 0);
-        bzero(&host_sin, sizeof(host_sin));
-        host_sin.sin_family = AF_INET;
-        host_sin.sin_addr.s_addr = inet_addr(hosts[i]);
-        host_sin.sin_port = htons(atoi(ports[i]));
+        bzero(&host_sin[i], sizeof(host_sin));
+        host_sin[i].sin_family = AF_INET;
+        host_sin[i].sin_addr.s_addr = inet_addr(hosts[i]);
+        host_sin[i].sin_port = htons(atoi(ports[i]));
        
-        /* set nonblock */
         int flags = fcntl(host_fd[i], F_GETFL, 0);
         fcntl(host_fd[i], F_SETFL, flags | O_NONBLOCK);
         
-        if ((n = connect(host_fd[i], (struct sockaddr*)&host_sin, sizeof(host_sin))) < 0) {
+        if ((n = connect(host_fd[i], (struct sockaddr*)&host_sin[i], sizeof(host_sin[i]))) < 0) {
             if (errno != EINPROGRESS) 
                 printf("connect error\n");
         }
@@ -112,64 +99,67 @@ int main(int argc,char *argv[])
     
     rfds = rs;
     wfds = ws;
-
+    
     n = sizeof(int);
     int status = F_CONNECTING;
     int error;
-    char buf[1024];
+    char buf[2048];
 	char msg_buf[1024];
     while (conn > 0) {
         memcpy(&rfds, &rs, sizeof(rfds));
         memcpy(&wfds, &ws, sizeof(wfds));
 
         if (select(nfds, &rfds, &wfds, (fd_set*)0, (struct timeval*)0) < 0) printf("select error\n");
-        printf("select\n");
-        fflush(stdout);
+        
         if (status == F_CONNECTING && (FD_ISSET(host_fd[0], &rfds) || FD_ISSET(host_fd[0], &wfds))) {
             if (getsockopt(host_fd[0], SOL_SOCKET, SO_ERROR, (void*)&error, &n) < 0 || error != 0) {
                 printf("non-blocking error\n");
             }
             status = F_READING;
-            FD_CLR(host_fd[0], &ws);
+            FD_CLR(host_fd[0], &ws);  
             printf(" F_CONNECTING<br>\n");
             fflush(stdout);
         } else if (status == F_WRITING && FD_ISSET(host_fd[0], &wfds)) {
+            memset(msg_buf, 0, 1024);
             printf(" F_WRITING\n");
             fflush(stdout);
-            /* int len = readline(fileno(filefd),  msg_buf, sizeof(msg_buf)); */
-            /* msg_buf[len - 1] = 13; */
-            /* msg_buf[len] = 10; */
-            /* msg_buf[len + 1] = '\0'; */
-            n = write(host_fd[0], "ls\r\n", 4);
-            printMsg("ls\n");
-            /* n = write(host_fd[0], msg_buf, len + 1); */
-            /* printMsg(msg_buf); */
-            printf("n = %d<br>\n", n);
+            int len = readline(fileno(filefp),  msg_buf, sizeof(msg_buf)); 
+            msg_buf[len - 1] = '\0';
+            printf(SCRIPT_COMMAND, msg_buf); 
             fflush(stdout);
+            msg_buf[len - 1] = 13; 
+            msg_buf[len] = 10; 
+            msg_buf[len + 1] = '\0'; 
+            /* n = write(host_fd[0], "ls\r\n", 4); */
+            /* printMsg("ls\n"); */
+            n = write(host_fd[0], msg_buf, len + 1); 
+            /* printf("n = %d<br>\n", n); */
+            /* fflush(stdout); */
             if (n > 0) {
                 status = F_READING;
                 FD_CLR(host_fd[0], &ws);
                 FD_SET(host_fd[0], &rs);
             }
         } else if (status == F_READING && FD_ISSET(host_fd[0], &rfds)) {
-            memset(buf, 0, 1024);
+            memset(buf, 0, 2048);
             n = read(host_fd[0], buf, sizeof(buf) - 1);
-            printf("n = %d<br>\n", n);
-            printf("buf = %c\n", buf[n - 3]);
-            fflush(stdout);
+            /* printf("n = %d\n", n); */
+            /* printf("buf = %c<br>\n", buf[n - 3]); */
+            /* fflush(stdout); */
             buf[n - 1] = '\0';
             if (n > 0) {
-                printMsg(buf);
                 if (buf[n - 3] == '%') {
                     status = F_WRITING;
                     FD_CLR(host_fd[0], &rs);
                     FD_SET(host_fd[0], &ws);
+                } else {
+                    printMsg(buf);
                 }
             }
         }
 
     }
-
+    
     /* close(host_fd[0]); */
 
     return 0;
@@ -208,15 +198,15 @@ void parseString(char* string, int* nbHost) {
             case 0:
                 hosts[count / 3] = (pair + 3);
                 if (strlen(pair + 3) > 0) (*nbHost)++;
-                printf("%s\n", hosts[count / 3]);
+                /* printf("%s\n", hosts[count / 3]); */
                 break;
             case 1:
                 ports[count / 3] = (pair + 3);
-                printf("%s\n", ports[count / 3]);
+                /* printf("%s\n", ports[count / 3]); */
                 break;
             case 2:
                 files[count / 3] = (pair + 3);
-                printf("%s\n", files[count / 3]);
+                /* printf("%s\n", files[count / 3]); */
                 break;
         }
         ++count;
@@ -225,21 +215,20 @@ void parseString(char* string, int* nbHost) {
 }
 void printMsg(char* string) {
     char* tmp = string;
-    char buf[1024];
-    int count = 0;
-    memset(buf, 0, 1024);
-    while (*tmp != '\0') {
-        if (*tmp == '\n') {
-            buf[count] = '<';
-            buf[++count] = 'b';
-            buf[++count] = 'r';
-            buf[++count] = '>';
+    char buf[2048];
+    while (*string != '\0') {
+        if (*string == '\n') {
+            char* s = strndup(tmp, string - tmp);
+            printf(SCRIPT_MESSAGE, s);
+            fflush(stdout);
+            free(s);
+            tmp = ++string;
         } else {
-            buf[count] = *tmp;   
+            ++string;    
         }
-        count++;
-        tmp++;
     }
-    printf(script, buf);
-    fflush(stdout);
+    if (tmp != string) {
+        printf(SCRIPT_MESSAGE, tmp);
+        fflush(stdout);
+    }
 }
