@@ -163,13 +163,23 @@ int main(int argc,char *argv[])
             } else if (status == F_READING && FD_ISSET(fd, &rfds)) {
                 memset(recv_buf, 0, 2048);
                 n = read(fd, recv_buf, sizeof(recv_buf) - 1);
-                /* printf("n = %d\n", n); */
-                /* fflush(stdout); */
-                recv_buf[n - 1] = '\0';
+                printf("n = %d\n", n);
+                fflush(stdout);
+                int c = 1;
+                while (recv_buf[n - 1 - c] == 13 || command_buf[n - 1 - c] == 10) {
+                    c++;                        
+                }
+                /* recv_buf[n - c] = '\0'; */
+                /* recv_buf[n - 1] = '\0'; */
+                printf("recv_buf = %d\n", recv_buf[n - 1]);
+                recv_buf[n - c] = '\0';
+                printf("c = %d\n", c);
+                fflush(stdout);
                 /* printf("buf = %s\n<br>", buf); */
                 if (n > 0) {
                     printMsg(i, recv_buf);
-                    if (recv_buf[n - 3] == '%') {
+                    /* if (recv_buf[n - 3] == '%') { */
+                    if (recv_buf[strlen(recv_buf) - 2] == '%') {
                         statuses[i] = F_WRITING;
                         FD_CLR(host_fd[i], &rs);
                         FD_SET(host_fd[i], &ws);
@@ -241,6 +251,7 @@ void parseString(char* string, int* nbHost) {
 void printMsg(const int i, char* string) {
     char* tmp = string;
     char buf[2048];
+    memset(buf, 0, 2048);
     int c = 0;
     while (*string != '\0') {
         if (*string == '%' && *(string + 1) == ' ') {
