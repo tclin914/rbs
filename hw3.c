@@ -41,8 +41,8 @@ int main(int argc,char *argv[])
     char* queryString = getenv("QUERY_STRING");
     parseString(queryString, &nbHost);
     nbHost = 1;
-    /* hosts[0] = "140.113.168.191"; */
-    /* ports[0] = "5577"; */
+    hosts[0] = "140.113.168.191";
+    ports[0] = "5577";
 
     printf(HEAD);
     printf(BODY);
@@ -59,8 +59,8 @@ int main(int argc,char *argv[])
     printf(TAIL);
     fflush(stdout);
 
-    FILE* filefp = fopen("t1.txt", "r");
-
+    FILE* filefp = fopen("t5.txt", "r");
+    
     int n;
     int host_fd[5] = {0};
     struct sockaddr_in host_sin[5];
@@ -121,20 +121,20 @@ int main(int argc,char *argv[])
             fflush(stdout);
         } else if (status == F_WRITING && FD_ISSET(host_fd[0], &wfds)) {
             memset(msg_buf, 0, 1024);
-            printf(" F_WRITING\n");
+            printf(" F_WRITING<br>\n");
             fflush(stdout);
             int len = readline(fileno(filefp),  msg_buf, sizeof(msg_buf)); 
-            msg_buf[len - 1] = '\0';
+            int c = 0;
+            while (msg_buf[len - 1 - c] == 13 || msg_buf[len - 1 - c] == 10) {
+                c++;
+            }
+            msg_buf[len - c] = '\0';
             printf(SCRIPT_COMMAND, msg_buf); 
             fflush(stdout);
             msg_buf[len - 1] = 13; 
             msg_buf[len] = 10; 
             msg_buf[len + 1] = '\0'; 
-            /* n = write(host_fd[0], "ls\r\n", 4); */
-            /* printMsg("ls\n"); */
             n = write(host_fd[0], msg_buf, len + 1); 
-            /* printf("n = %d<br>\n", n); */
-            /* fflush(stdout); */
             if (n > 0) {
                 status = F_READING;
                 FD_CLR(host_fd[0], &ws);
@@ -147,13 +147,13 @@ int main(int argc,char *argv[])
             /* printf("buf = %c<br>\n", buf[n - 3]); */
             /* fflush(stdout); */
             buf[n - 1] = '\0';
+            /* printf("buf = %s\n<br>", buf); */
             if (n > 0) {
+                printMsg(buf);
                 if (buf[n - 3] == '%') {
                     status = F_WRITING;
                     FD_CLR(host_fd[0], &rs);
                     FD_SET(host_fd[0], &ws);
-                } else {
-                    printMsg(buf);
                 }
             }
         }
@@ -216,19 +216,44 @@ void parseString(char* string, int* nbHost) {
 void printMsg(char* string) {
     char* tmp = string;
     char buf[2048];
+    int i = 0;
     while (*string != '\0') {
-        if (*string == '\n') {
-            char* s = strndup(tmp, string - tmp);
-            printf(SCRIPT_MESSAGE, s);
-            fflush(stdout);
-            free(s);
-            tmp = ++string;
-        } else {
-            ++string;    
+        if (*string == '%' && *(string + 1) == ' ') {
+            return;
         }
+        if (*string == '\n') {
+            buf[i] = '\0';
+            printf(SCRIPT_MESSAGE, buf);
+            fflush(stdout);
+            memset(buf, 0, 2048);
+            i = 0;
+            ++string;
+            continue;
+        } else if (*string == '"') {
+            buf[i] = '&';
+            buf[++i] = 'q';
+            buf[++i] = 'u';
+            buf[++i] = 'o';
+            buf[++i] = 't';
+            buf[++i] = ';';
+        } else if (*string == '<') {
+            buf[i] = '&';
+            buf[++i] = 'l';
+            buf[++i] = 't';
+            buf[++i] = ';';
+        } else if (*string == '>') {
+            buf[i] = '&';
+            buf[++i] = 'g';
+            buf[++i] = 't';
+            buf[++i] = ';';
+        } else {
+            buf[i] = *string;
+        }
+        ++i;
+        ++string;
     }
-    if (tmp != string) {
-        printf(SCRIPT_MESSAGE, tmp);
+    if (strlen(buf) > 0) {
+        printf(SCRIPT_MESSAGE, buf);
         fflush(stdout);
     }
 }
