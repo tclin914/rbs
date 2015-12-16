@@ -24,25 +24,34 @@
 #define TABLE1 "<table width=\"800\" border=\"1\">\r\n<tr>\r\n"
 #define TABLE_ELEMENT "<td>%s</td>\r\n"
 #define TABLE2 "</tr>\r\n<tr>\r\n<td valign=\"top\" id=\"m0\"></td><td valign=\"top\" id=\"m1\"></td><td valign=\"top\" id=\"m2\"></td>\r\n<td valign=\"top\" id=\"m3\"></td><td valign=\"top\" id=\"m4\"></td>\r\n</tr>\r\n</table>\r\n"
-#define SCRIPT_MESSAGE "<script>document.all[\'m0\'].innerHTML += \"%s<br>\";</script>\r\n"
-#define SCRIPT_COMMAND "<script>document.all[\'m0\'].innerHTML += \"% <b>%s</b><br>\";</script>\r\n"
+#define SCRIPT_MESSAGE "<script>document.all[\'%s\'].innerHTML += \"%s<br>\";</script>\r\n"
+#define SCRIPT_COMMAND "<script>document.all[\'%s\'].innerHTML += \"% <b>%s</b><br>\";</script>\r\n"
 #define TAIL "</font>\r\n</body>\r\n</html>\r\n"
+
+const char *mlist[5] = {
+    "m0",
+    "m1",
+    "m2",
+    "m3",
+    "m4"
+};
 
 void parseString(char* string, int* nbHost);
 int readline(int fd,char *ptr,int maxlen);
-void printMsg(char* string);
+void printMsg(const int i, char* string);
 char* hosts[5];
 char* ports[5];
 char* files[5];
+FILE* filefps[5];
 
 int main(int argc,char *argv[])
 {
     int nbHost = 0;
     char* queryString = getenv("QUERY_STRING");
     parseString(queryString, &nbHost);
-    nbHost = 1;
-    hosts[0] = "140.113.168.191";
-    ports[0] = "5577";
+    /* nbHost = 1; */
+    /* hosts[0] = "140.113.168.191"; */
+    /* ports[0] = "5577"; */
 
     printf(HEAD);
     printf(BODY);
@@ -59,16 +68,19 @@ int main(int argc,char *argv[])
     printf(TAIL);
     fflush(stdout);
 
-    FILE* filefp = fopen("t5.txt", "r");
+    /* FILE* filefp = fopen("t5.txt", "r"); */
+    for (int i = 0; i < nbHost; i++) {
+        filefps[i] = fopen(files[i], "r");
+    }
     
     int n;
-    int host_fd[5] = {0};
+    int host_fd[5] = { 0};
     struct sockaddr_in host_sin[5];
     /* struct sockaddr_in host_sin, cli_sin; */
     memset(&host_sin, 0, sizeof(host_sin));
     for (int i = 0; i < nbHost; i++) {
         host_fd[i] = socket(AF_INET, SOCK_STREAM, 0);
-        bzero(&host_sin[i], sizeof(host_sin));
+        bzero(&host_sin[i], sizeof(host_sin[i]));
         host_sin[i].sin_family = AF_INET;
         host_sin[i].sin_addr.s_addr = inet_addr(hosts[i]);
         host_sin[i].sin_port = htons(atoi(ports[i]));
@@ -87,73 +99,86 @@ int main(int argc,char *argv[])
     fd_set rs;
     fd_set ws;
 
-    int conn = 1;
+    int conn = nbHost;
     int nfds = FD_SETSIZE;
     FD_ZERO(&rfds);
     FD_ZERO(&wfds);
     FD_ZERO(&rs);
     FD_ZERO(&ws);
-    
-    FD_SET(host_fd[0], &rs);
-    FD_SET(host_fd[0], &ws);
+   
+    for (int i = 0; i < nbHost; i++) {
+        FD_SET(host_fd[i], &rs);
+        FD_SET(host_fd[i], &ws);
+    }
     
     rfds = rs;
     wfds = ws;
     
     n = sizeof(int);
-    int status = F_CONNECTING;
+    int statuses[5] = { F_CONNECTING};
+    int status;
+    int fd;
+    int i;
     int error;
-    char buf[2048];
-	char msg_buf[1024];
+    char recv_buf[2048];
+	char command_buf[1024];
     while (conn > 0) {
         memcpy(&rfds, &rs, sizeof(rfds));
         memcpy(&wfds, &ws, sizeof(wfds));
 
         if (select(nfds, &rfds, &wfds, (fd_set*)0, (struct timeval*)0) < 0) printf("select error\n");
-        
-        if (status == F_CONNECTING && (FD_ISSET(host_fd[0], &rfds) || FD_ISSET(host_fd[0], &wfds))) {
-            if (getsockopt(host_fd[0], SOL_SOCKET, SO_ERROR, (void*)&error, &n) < 0 || error != 0) {
-                printf("non-blocking error\n");
-            }
-            status = F_READING;
-            FD_CLR(host_fd[0], &ws);  
-            printf(" F_CONNECTING<br>\n");
-            fflush(stdout);
-        } else if (status == F_WRITING && FD_ISSET(host_fd[0], &wfds)) {
-            memset(msg_buf, 0, 1024);
-            printf(" F_WRITING<br>\n");
-            fflush(stdout);
-            int len = readline(fileno(filefp),  msg_buf, sizeof(msg_buf)); 
-            int c = 0;
-            while (msg_buf[len - 1 - c] == 13 || msg_buf[len - 1 - c] == 10) {
-                c++;
-            }
-            msg_buf[len - c] = '\0';
-            printf(SCRIPT_COMMAND, msg_buf); 
-            fflush(stdout);
-            msg_buf[len - 1] = 13; 
-            msg_buf[len] = 10; 
-            msg_buf[len + 1] = '\0'; 
-            n = write(host_fd[0], msg_buf, len + 1); 
-            if (n > 0) {
-                status = F_READING;
-                FD_CLR(host_fd[0], &ws);
-                FD_SET(host_fd[0], &rs);
-            }
-        } else if (status == F_READING && FD_ISSET(host_fd[0], &rfds)) {
-            memset(buf, 0, 2048);
-            n = read(host_fd[0], buf, sizeof(buf) - 1);
-            /* printf("n = %d\n", n); */
-            /* printf("buf = %c<br>\n", buf[n - 3]); */
-            /* fflush(stdout); */
-            buf[n - 1] = '\0';
-            /* printf("buf = %s\n<br>", buf); */
-            if (n > 0) {
-                printMsg(buf);
-                if (buf[n - 3] == '%') {
-                    status = F_WRITING;
-                    FD_CLR(host_fd[0], &rs);
-                    FD_SET(host_fd[0], &ws);
+        for (i = 0; i < 5; i++) {
+            status = statuses[i];
+            fd = host_fd[i];
+
+            if (status == F_CONNECTING && (FD_ISSET(fd, &rfds) || FD_ISSET(fd, &wfds))) {
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (void*)&error, &n) < 0 || error != 0) {
+                    printf("non-blocking error\n");
+                }
+                statuses[i] = F_READING;
+                FD_CLR(host_fd[i], &ws);  
+                printf(" F_CONNECTING<br>\n");
+                fflush(stdout);
+            } else if (status == F_WRITING && FD_ISSET(fd, &wfds)) {
+                memset(command_buf, 0, 1024);
+                printf(" F_WRITING<br>\n");
+                fflush(stdout);
+                int len = readline(fileno(filefps[i]),  command_buf, sizeof(command_buf)); 
+                int c = 0;
+                while (command_buf[len - 1 - c] == 13 || command_buf[len - 1 - c] == 10) {
+                    c++;
+                }
+                command_buf[len - c] = '\0';
+                printf(SCRIPT_COMMAND, mlist[i], command_buf); 
+                fflush(stdout);
+                command_buf[len - 1] = 13; 
+                command_buf[len] = 10; 
+                command_buf[len + 1] = '\0'; 
+                n = write(fd, command_buf, len + 1); 
+                if (n > 0) {
+                    statuses[i] = F_READING;
+                    FD_CLR(host_fd[i], &ws);
+                    FD_SET(host_fd[i], &rs);
+                }
+            } else if (status == F_READING && FD_ISSET(fd, &rfds)) {
+                memset(recv_buf, 0, 2048);
+                n = read(fd, recv_buf, sizeof(recv_buf) - 1);
+                /* printf("n = %d\n", n); */
+                /* fflush(stdout); */
+                recv_buf[n - 1] = '\0';
+                /* printf("buf = %s\n<br>", buf); */
+                if (n > 0) {
+                    printMsg(i, recv_buf);
+                    if (recv_buf[n - 3] == '%') {
+                        statuses[i] = F_WRITING;
+                        FD_CLR(host_fd[i], &rs);
+                        FD_SET(host_fd[i], &ws);
+                    }
+                } else {
+                    close(host_fd[i]);
+                    FD_CLR(host_fd[i], &rs);
+                    statuses[i] = F_DONE;
+                    conn--;
                 }
             }
         }
@@ -213,47 +238,47 @@ void parseString(char* string, int* nbHost) {
         pair = strtok(NULL, "&");
     }
 }
-void printMsg(char* string) {
+void printMsg(const int i, char* string) {
     char* tmp = string;
     char buf[2048];
-    int i = 0;
+    int c = 0;
     while (*string != '\0') {
         if (*string == '%' && *(string + 1) == ' ') {
             return;
         }
         if (*string == '\n') {
-            buf[i] = '\0';
-            printf(SCRIPT_MESSAGE, buf);
+            buf[c] = '\0';
+            printf(SCRIPT_MESSAGE, mlist[i], buf);
             fflush(stdout);
             memset(buf, 0, 2048);
-            i = 0;
+            c = 0;
             ++string;
             continue;
         } else if (*string == '"') {
-            buf[i] = '&';
-            buf[++i] = 'q';
-            buf[++i] = 'u';
-            buf[++i] = 'o';
-            buf[++i] = 't';
-            buf[++i] = ';';
+            buf[c] = '&';
+            buf[++c] = 'q';
+            buf[++c] = 'u';
+            buf[++c] = 'o';
+            buf[++c] = 't';
+            buf[++c] = ';';
         } else if (*string == '<') {
-            buf[i] = '&';
-            buf[++i] = 'l';
-            buf[++i] = 't';
-            buf[++i] = ';';
+            buf[c] = '&';
+            buf[++c] = 'l';
+            buf[++c] = 't';
+            buf[++c] = ';';
         } else if (*string == '>') {
-            buf[i] = '&';
-            buf[++i] = 'g';
-            buf[++i] = 't';
-            buf[++i] = ';';
+            buf[c] = '&';
+            buf[++c] = 'g';
+            buf[++c] = 't';
+            buf[++c] = ';';
         } else {
-            buf[i] = *string;
+            buf[c] = *string;
         }
-        ++i;
+        ++c;
         ++string;
     }
     if (strlen(buf) > 0) {
-        printf(SCRIPT_MESSAGE, buf);
+        printf(SCRIPT_MESSAGE, mlist[i], buf);
         fflush(stdout);
     }
 }
